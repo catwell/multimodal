@@ -138,16 +138,30 @@ local function strip_ansi(s: string): string
    return s
 end
 
+local selected = 1
+
+local function update_rows()
+   for i, stream in ipairs(streams) do
+      stream.row = (i - 1) * 3 + 1
+   end
+end
+
 -- Draw headers for all streams
 local function draw_headers()
-   for _, stream in ipairs(streams) do
+   for i, stream in ipairs(streams) do
       terminal.cursor.position.set(stream.row, 1)
       terminal.clear.line()
+      if i == selected then
+         terminal.text.stack.push({fg = "yellow", brightness = "bold"})
+         terminal.output.write("> ")
+      else
+         terminal.output.write("  ")
+      end
       terminal.text.stack.push({fg = "cyan", brightness = "bold"})
       terminal.output.write(
          stream.app.description .. " (" .. stream.app.id .. ")"
       )
-      terminal.text.stack.pop(1)
+      terminal.text.stack.pop(i == selected and 2 or 1)
    end
 end
 
@@ -159,6 +173,43 @@ local function cleanup()
    os.execute("rm -rf '" .. tmp_dir .. "'")
 end
 
+local function stop_selected()
+   local stream = streams[selected]
+   local rows = terminal.size()
+   terminal.cursor.position.set(rows, 1)
+   terminal.clear.line()
+   terminal.text.stack.push({fg = "yellow"})
+   terminal.output.write(
+      "Stop " .. stream.app.description
+      .. " (" .. stream.app.id .. ")? (y/N) "
+   )
+   terminal.text.stack.pop(1)
+   terminal.cursor.visible.set(true)
+
+   while true do
+      local key = terminal.input.readansi(0.1)
+      if key then
+         terminal.cursor.visible.set(false)
+         terminal.cursor.position.set(rows, 1)
+         terminal.clear.line()
+         if key == "y" or key == "Y" then
+            os.execute(
+               modal_cmd .. " app stop '" .. stream.app.id .. "' 2>/dev/null"
+            )
+            os.execute("kill " .. stream.pid .. " 2>/dev/null")
+            table.remove(streams, selected)
+            if selected > #streams then
+               selected = #streams
+            end
+            update_rows()
+            terminal.clear.screen()
+            draw_headers()
+         end
+         return
+      end
+   end
+end
+
 -- Main display function
 local function main()
    terminal.cursor.visible.set(false)
@@ -166,11 +217,22 @@ local function main()
    draw_headers()
 
    -- Main loop
-   while true do
-      -- Check for ctrl+c
+   while #streams > 0 do
       local key = terminal.input.readansi(0)
-      if key == "\3" then
+      if key == "\3" then -- Ctrl+C
          break
+      elseif key == "\27[A" then -- Up arrow
+         if selected > 1 then
+            selected = selected - 1
+            draw_headers()
+         end
+      elseif key == "\27[B" then -- Down arrow
+         if selected < #streams then
+            selected = selected + 1
+            draw_headers()
+         end
+      elseif key == "\13" or key == "\10" then -- Enter
+         stop_selected()
       end
 
       -- Read from each log file
@@ -212,11 +274,11 @@ local function main()
       end
 
       sys.sleep(0.1)
-      end
+   end
 
-      cleanup()
-      terminal.cursor.visible.set(true)
-      end
+   cleanup()
+   terminal.cursor.visible.set(true)
+end
 
 -- Run with terminal wrapper for clean init/shutdown
 local wrapped = terminal.initwrap(main, {

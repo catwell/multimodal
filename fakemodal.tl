@@ -19,6 +19,9 @@ list:flag("--json", "Output as JSON")
 local logs = app:command("logs", "Stream app logs")
 logs:argument("app_id", "App ID")
 
+local stop = app:command("stop", "Stop an app")
+stop:argument("app_id", "App ID")
+
 local args = parser:parse()
 
 local apps = {
@@ -49,18 +52,18 @@ local function app_list()
    io.write(cjson.encode(data as cjson.Serializable) .. "\n")
 end
 
-local function app_logs(app_id: string)
-   local found = false
+local function require_deployed(app_id: string)
    for _, a in ipairs(apps) do
       if a["App ID"] == app_id and a["State"] ~= "stopped" then
-         found = true
-         break
+         return
       end
    end
-   if not found then
-      io.stderr:write("Error: Could not find a deployed app named '" .. app_id .. "'.\n")
-      os.exit(1)
-   end
+   io.stderr:write("Error: Could not find a deployed app named '" .. app_id .. "'.\n")
+   os.exit(1)
+end
+
+local function app_logs(app_id: string)
+   require_deployed(app_id)
    local counter = 1
    while true do
       local t = os.date("*t") as {string: integer}
@@ -77,4 +80,8 @@ if args["subcommand"] == "list" then
    app_list()
 elseif args["subcommand"] == "logs" then
    app_logs(args["app_id"] as string)
+elseif args["subcommand"] == "stop" then
+   local stop_id = args["app_id"] as string
+   require_deployed(stop_id)
+   io.write("Stopping app " .. stop_id .. "...\n")
 end
