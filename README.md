@@ -1,6 +1,8 @@
 # multimodal
 
-Watch logs of all the [Modal](https://modal.com/) apps in a single environment.
+Watch single-line logs of all the [Modal](https://modal.com/) apps in a single environment; kill those you don't like.
+
+![demo](demo.gif)
 
 ## Usage
 
