@@ -42,7 +42,7 @@ sh localua.sh .lua
 To rebuild and install the Lua version, use:
 
 ```bash
-tl gen multimodal.tl
+./.lua/bin/tl gen multimodal.tl
 ./.lua/bin/luarocks make
 ```
 
