@@ -6,12 +6,14 @@ local sys = require("system")
 
 local parser = argparse("multimodal", "Watch Modal app logs")
 parser:option("-e --env", "Modal environment")
+parser:option("-m --modal-command", "Modal command"):default("modal")
 local args = parser:parse()
 local env = args["env"]
 if not env then
    parser:error("--env is required")
 end
 env = env
+local modal_cmd = args["modal_command"]
 
 
 if (env):match("[^%w%-_]") then
@@ -20,18 +22,25 @@ if (env):match("[^%w%-_]") then
 end
 
 
-local list_handle = io.popen(
-"modal app list --env '" .. (env) .. "' --json")
-
+local list_cmd = modal_cmd .. " app list --env '" .. (env) .. "' --json"
+local list_handle = io.popen(list_cmd .. " 2>&1")
 if not list_handle then
-   io.stderr:write("Failed to run modal app list\n")
+   io.stderr:write("Failed to run: " .. list_cmd .. "\n")
    os.exit(1)
 end
 local json_str = list_handle:read("*a")
-list_handle:close()
+local ok, _, code = list_handle:close()
+
+if not ok then
+   io.stderr:write("Command failed: " .. list_cmd .. "\n")
+   if json_str and json_str ~= "" then
+      io.stderr:write(json_str)
+   end
+   os.exit(code or 1)
+end
 
 if not json_str or json_str == "" then
-   io.stderr:write("No output from modal app list\n")
+   io.stderr:write("No output from: " .. list_cmd .. "\n")
    os.exit(1)
 end
 
@@ -65,7 +74,15 @@ os.remove(tmp_dir)
 os.execute("mkdir -p '" .. tmp_dir .. "'")
 
 
-local awk_prog = [[BEGIN{RS="[\r\n]+"} /./{print > F; close(F)}]]
+local lua_interp = arg[-1]
+local function lua_filter_prog(file)
+   return 'local F="' .. file .. '";local b="";' ..
+   'while true do local c=io.read(1);if not c then break end;' ..
+   'if c=="\\r" or c=="\\n" then ' ..
+   'if b~="" then local f=io.open(F,"w");' ..
+   'if f then f:write(b);f:close() end end;b="" ' ..
+   'else b=b..c end end'
+end
 
 
 
@@ -85,9 +102,9 @@ for i, app in ipairs(apps) do
    end
 
    local log_file = tmp_dir .. "/" .. app.id
-   local cmd = "PYTHONUNBUFFERED=1 modal app logs '" .. app.id ..
-   "' 2>&1 | awk -v F='" .. log_file ..
-   "' '" .. awk_prog .. "' & echo $!"
+   local cmd = "PYTHONUNBUFFERED=1 " .. modal_cmd .. " app logs '" .. app.id ..
+   "' 2>&1 | " .. lua_interp .. " -e '" ..
+   lua_filter_prog(log_file) .. "' & echo $!"
    local handle = io.popen(cmd)
    if not handle then
       io.stderr:write("Failed to start log process for " .. app.id .. "\n")

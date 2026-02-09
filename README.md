@@ -44,6 +44,12 @@ tl gen multimodal.tl
 ./.lua/bin/luarocks make
 ```
 
+To test without running modal jobs you can use `fakemodal`:
+
+```bash
+./.lua/bin/lua multimodal.lua -e test -m "./.lua/bin/tl run fakemodal.tl --"
+```
+
 ## Copyright
 
 Copyright (c) from 2026 Pierre Chapuis
