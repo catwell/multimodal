@@ -86,8 +86,8 @@ do
 end
 
 local filter_script = [[
-   local fn = "%s"
-   local nrows = %d
+   local fn = arg[1]
+   local nrows = tonumber(arg[2])
    local row, rows = {}, {}
    while true do
       local c = io.read(1)
@@ -112,13 +112,13 @@ local filter_script = [[
    end
 ]]
 
-local function write_filter_script(file: string, n: integer, script_path: string)
+local function write_filter_script(script_path: string)
    local f = io.open(script_path, "w")
    if not f then
       io.stderr:write("Failed to write filter script: " .. script_path .. "\n")
       os.exit(1)
    end
-   f:write(string.format(filter_script, file, n))
+   f:write(filter_script)
    f:close()
 end
 
@@ -141,9 +141,10 @@ for i, app in ipairs(apps) do
 
    local log_file = tmp_dir .. "/" .. app.id
    local script_file = tmp_dir .. "/" .. app.id .. ".lua"
-   write_filter_script(log_file, num_lines, script_file)
+   write_filter_script(script_file)
    local cmd = "PYTHONUNBUFFERED=1 " .. modal_cmd .. " app logs '" .. app.id
-      .. "' 2>&1 | " .. lua_interp .. " '" .. script_file .. "' & echo $!"
+      .. "' 2>&1 | " .. lua_interp .. " '" .. script_file
+      .. "' '" .. log_file .. "' " .. num_lines .. " & echo $!"
    local handle = io.popen(cmd)
    if not handle then
       io.stderr:write("Failed to start log process for " .. app.id .. "\n")
