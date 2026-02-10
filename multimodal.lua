@@ -7,7 +7,9 @@ local sys = require("system")
 local parser = argparse("multimodal", "Watch Modal app logs")
 parser:option("-e --env", "Modal environment")
 parser:option("-m --modal-command", "Modal command"):default("modal")
+parser:option("-n --num-lines", "Number of log lines to keep per app"):default("1"):convert(tonumber)
 local args = parser:parse()
+local num_lines = args["num_lines"]
 local env = args["env"]
 if not env then
    parser:error("--env is required")
@@ -74,14 +76,50 @@ os.remove(tmp_dir)
 os.execute("mkdir -p '" .. tmp_dir .. "'")
 
 
-local lua_interp = arg[-1]
-local function lua_filter_prog(file)
-   return 'local F="' .. file .. '";local b="";' ..
-   'while true do local c=io.read(1);if not c then break end;' ..
-   'if c=="\\r" or c=="\\n" then ' ..
-   'if b~="" then local f=io.open(F,"w");' ..
-   'if f then f:write(b);f:close() end end;b="" ' ..
-   'else b=b..c end end'
+
+
+local lua_interp
+do
+   local i = -1
+   while arg[i] do i = i - 1 end
+   lua_interp = arg[i + 1]
+end
+
+local filter_script = [[
+   local fn = "%s"
+   local nrows = %d
+   local row, rows = {}, {}
+   while true do
+      local c = io.read(1)
+      if not c then break end
+      if c == "\r" or c == "\n" then
+         local line = table.concat(row)
+         if line ~= "" then
+            rows[#rows + 1] = line
+            if #rows > nrows then
+               table.remove(rows, 1)
+            end
+            local f = io.open(fn, "w")
+            if f then
+               f:write(table.concat(rows, "\n"))
+               f:close()
+            end
+         end
+         row = {}
+      else
+         row[#row + 1] = c
+      end
+   end
+]]
+
+local function write_filter_script(file, n, script_path)
+   local f = io.open(script_path, "w")
+   if not f then
+      io.stderr:write("Failed to write filter script: " .. script_path .. "\n")
+      os.exit(1)
+   end
+   f:write(string.format(filter_script, file, n))
+   f:close()
 end
 
 
@@ -102,9 +140,10 @@ for i, app in ipairs(apps) do
    end
 
    local log_file = tmp_dir .. "/" .. app.id
+   local script_file = tmp_dir .. "/" .. app.id .. ".lua"
+   write_filter_script(log_file, num_lines, script_file)
    local cmd = "PYTHONUNBUFFERED=1 " .. modal_cmd .. " app logs '" .. app.id ..
-   "' 2>&1 | " .. lua_interp .. " -e '" ..
-   lua_filter_prog(log_file) .. "' & echo $!"
+   "' 2>&1 | " .. lua_interp .. " '" .. script_file .. "' & echo $!"
    local handle = io.popen(cmd)
    if not handle then
       io.stderr:write("Failed to start log process for " .. app.id .. "\n")
@@ -123,7 +162,7 @@ for i, app in ipairs(apps) do
       pid = pid,
       log_file = log_file,
       last_line = "",
-      row = (i - 1) * 3 + 1,
+      row = (i - 1) * (num_lines + 2) + 1,
    })
 end
 
@@ -142,7 +181,7 @@ local selected = 1
 
 local function update_rows()
    for i, stream in ipairs(streams) do
-      stream.row = (i - 1) * 3 + 1
+      stream.row = (i - 1) * (num_lines + 2) + 1
    end
 end
 
@@ -246,23 +285,30 @@ local function main()
 
             if data and #data > 0 then
 
-               local current_line = strip_ansi(data)
-               current_line = current_line:gsub("[%s]+$", "")
+               local current_data = strip_ansi(data)
+               current_data = current_data:gsub("[%s]+$", "")
 
-               if current_line ~= stream.last_line then
-                  stream.last_line = current_line
+               if current_data ~= stream.last_line then
+                  stream.last_line = current_data
                   needs_header_redraw = true
 
 
-                  local display_line = current_line
-                  if #display_line > cols then
-                     display_line = display_line:sub(1, cols)
+                  local lines = {}
+                  for line in current_data:gmatch("[^\n]+") do
+                     table.insert(lines, line)
                   end
-
-                  terminal.cursor.position.set(stream.row + 1, 1)
-                  terminal.clear.line()
-                  terminal.text.stack.apply()
-                  terminal.output.write(display_line)
+                  for j = 1, num_lines do
+                     terminal.cursor.position.set(stream.row + j, 1)
+                     terminal.clear.line()
+                     terminal.text.stack.apply()
+                     local line = lines[j]
+                     if line then
+                        if #line > cols then
+                           line = line:sub(1, cols)
+                        end
+                        terminal.output.write(line)
+                     end
+                  end
                end
             end
          end
