@@ -129,6 +129,7 @@ local record AppStream
    log_file: string
    last_line: string
    row: integer
+   visual_height: integer
 end
 
 local streams: {AppStream} = {}
@@ -164,6 +165,7 @@ for i, app in ipairs(apps) do
       log_file = log_file,
       last_line = "",
       row = (i - 1) * (num_lines + 2) + 1,
+      visual_height = num_lines,
    })
 end
 
@@ -184,8 +186,10 @@ local keys = terminal.input.keymap.default_keys
 local selected = 1
 
 local function update_rows()
-   for i, stream in ipairs(streams) do
-      stream.row = (i - 1) * (num_lines + 2) + 1
+   local r = 1
+   for _, stream in ipairs(streams) do
+      stream.row = r
+      r = r + stream.visual_height + 2
    end
 end
 
@@ -294,27 +298,44 @@ local function main()
                current_data = current_data:gsub("[%s]+$", "")
 
                if current_data ~= stream.last_line then
-                  stream.last_line = current_data
-                  needs_header_redraw = true
+                   stream.last_line = current_data
+                   needs_header_redraw = true
 
-                  -- Split into lines and display each
-                  local lines: {string} = {}
-                  for line in current_data:gmatch("[^\n]+") do
-                     table.insert(lines, line)
-                  end
-                  for j = 1, num_lines do
-                     terminal.cursor.position.set(stream.row + j, 1)
-                     terminal.clear.line()
-                     terminal.text.stack.apply()
-                     local line = lines[j]
-                     if line then
-                        if #line > cols then
-                           line = line:sub(1, cols)
-                        end
-                        terminal.output.write(line)
-                     end
-                  end
-               end
+                   -- Split into lines and wrap long ones
+                   local visual_lines: {string} = {}
+                   for line in current_data:gmatch("[^\n]+") do
+                      if #line > cols then
+                         local pos = 1
+                         while pos <= #line do
+                            table.insert(visual_lines, line:sub(pos, pos + cols - 1))
+                            pos = pos + cols
+                         end
+                      else
+                         table.insert(visual_lines, line)
+                      end
+                   end
+
+                   local new_height = #visual_lines
+                   if new_height < num_lines then
+                      new_height = num_lines
+                   end
+                   if new_height ~= stream.visual_height then
+                      stream.visual_height = new_height
+                      update_rows()
+                      terminal.clear.screen()
+                      draw_headers()
+                   end
+
+                   for j = 1, stream.visual_height do
+                      terminal.cursor.position.set(stream.row + j, 1)
+                      terminal.clear.line()
+                      terminal.text.stack.apply()
+                      local line = visual_lines[j]
+                      if line then
+                         terminal.output.write(line)
+                      end
+                   end
+                end
             end
          end
       end
