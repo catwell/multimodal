@@ -40,8 +40,14 @@ local record terminal
    end
    text: Text
 
+   record KeyMap
+      default_key_map: {string: string}
+      default_keys: {string: string}
+   end
+
    record Input
       readansi: function(timeout: number): string, string, string
+      keymap: KeyMap
    end
    input: Input
 

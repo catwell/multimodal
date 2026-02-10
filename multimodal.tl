@@ -177,6 +177,9 @@ local function strip_ansi(s: string): string
    return s
 end
 
+local key_map = terminal.input.keymap.default_key_map
+local keys = terminal.input.keymap.default_keys
+
 local selected = 1
 
 local function update_rows()
@@ -226,12 +229,12 @@ local function stop_selected()
    terminal.cursor.visible.set(true)
 
    while true do
-      local key = terminal.input.readansi(0.1)
-      if key then
+      local rawkey = terminal.input.readansi(0.1)
+      if rawkey then
          terminal.cursor.visible.set(false)
          terminal.cursor.position.set(rows, 1)
          terminal.clear.line()
-         if key == "y" or key == "Y" then
+         if rawkey == "y" or rawkey == "Y" then
             os.execute(
                modal_cmd .. " app stop '" .. stream.app.id .. "' 2>/dev/null"
             )
@@ -257,20 +260,21 @@ local function main()
 
    -- Main loop
    while #streams > 0 do
-      local key = terminal.input.readansi(0)
-      if key == "\3" then -- Ctrl+C
+      local rawkey = terminal.input.readansi(0)
+      local keyname = rawkey and key_map[rawkey]
+      if keyname == keys.ctrl_c then
          break
-      elseif key == "\27[A" then -- Up arrow
+      elseif keyname == keys.up then
          if selected > 1 then
             selected = selected - 1
             draw_headers()
          end
-      elseif key == "\27[B" then -- Down arrow
+      elseif keyname == keys.down then
          if selected < #streams then
             selected = selected + 1
             draw_headers()
          end
-      elseif key == "\13" or key == "\10" then -- Enter
+      elseif keyname == keys.enter then
          stop_selected()
       end
 
