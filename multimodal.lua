@@ -123,6 +123,10 @@ local function write_filter_script(script_path)
 end
 
 
+local script_file = tmp_dir .. "/filter.lua"
+write_filter_script(script_file)
+
+
 
 
 
@@ -141,8 +145,6 @@ for i, app in ipairs(apps) do
    end
 
    local log_file = tmp_dir .. "/" .. app.id
-   local script_file = tmp_dir .. "/" .. app.id .. ".lua"
-   write_filter_script(script_file)
    local cmd = "PYTHONUNBUFFERED=1 " .. modal_cmd .. " app logs '" .. app.id ..
    "' 2>&1 | " .. lua_interp .. " '" .. script_file ..
    "' '" .. log_file .. "' " .. num_lines .. " & echo $!"
