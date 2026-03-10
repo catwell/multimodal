@@ -86,23 +86,38 @@ do
 end
 
 local filter_script = [[
-   local fn = arg[1]
-   local nrows = tonumber(arg[2])
-   local row, rows = {}, {}
+   local out_fn = arg[1]
+   local err_fn = arg[2]
+   local nrows = tonumber(arg[3])
+   local row = {}
+   local out_rows, err_rows = {}, {}
    while true do
       local c = io.read(1)
       if not c then break end
       if c == "\r" or c == "\n" then
          local line = table.concat(row)
-         if line ~= "" then
-            rows[#rows + 1] = line
-            if #rows > nrows then
-               table.remove(rows, 1)
-            end
-            local f = io.open(fn, "w")
-            if f then
-               f:write(table.concat(rows, "\n"))
-               f:close()
+         -- Skip empty lines and Rich spinner lines (Braille characters)
+         if line ~= "" and not line:find("\226[\160-\163]") then
+            local is_err = line:find("\027%[[%d;]*31m")
+               or line:find("\027%[[%d;]*91m")
+            local is_out = line:find("\027%[[%d;]*34m")
+               or line:find("\027%[[%d;]*94m")
+            if is_err or is_out then
+               local rows, fn, max
+               if is_err then
+                  rows, fn, max = err_rows, err_fn, 24
+               else
+                  rows, fn, max = out_rows, out_fn, nrows
+               end
+               rows[#rows + 1] = line
+               if #rows > max then
+                  table.remove(rows, 1)
+               end
+               local f = io.open(fn, "w")
+               if f then
+                  f:write(table.concat(rows, "\n"))
+                  f:close()
+               end
             end
          end
          row = {}
@@ -136,6 +151,8 @@ write_filter_script(script_file)
 
 
 
+
+
 local streams = {}
 for i, app in ipairs(apps) do
 
@@ -144,10 +161,13 @@ for i, app in ipairs(apps) do
       os.exit(1)
    end
 
-   local log_file = tmp_dir .. "/" .. app.id
-   local cmd = "PYTHONUNBUFFERED=1 " .. modal_cmd .. " app logs '" .. app.id ..
+   local log_file = tmp_dir .. "/" .. app.id .. ".out"
+   local err_file = tmp_dir .. "/" .. app.id .. ".err"
+   local cmd = "PYTHONUNBUFFERED=1 FORCE_COLOR=1 " .. modal_cmd ..
+   " app logs '" .. app.id ..
    "' 2>&1 | " .. lua_interp .. " '" .. script_file ..
-   "' '" .. log_file .. "' " .. num_lines .. " & echo $!"
+   "' '" .. log_file .. "' '" .. err_file .. "' " .. num_lines ..
+   " & echo $!"
    local handle = io.popen(cmd)
    if not handle then
       io.stderr:write("Failed to start log process for " .. app.id .. "\n")
@@ -165,7 +185,9 @@ for i, app in ipairs(apps) do
       app = app,
       pid = pid,
       log_file = log_file,
+      err_file = err_file,
       last_line = "",
+      has_errors = false,
       row = (i - 1) * (num_lines + 2) + 1,
       visual_height = num_lines,
    })
@@ -211,6 +233,11 @@ local function draw_headers()
       stream.app.description .. " (" .. stream.app.id .. ")")
 
       terminal.text.stack.pop(i == selected and 2 or 1)
+      if stream.has_errors then
+         terminal.text.stack.push({ fg = "red", brightness = "bold" })
+         terminal.output.write(" [!]")
+         terminal.text.stack.pop(1)
+      end
    end
 end
 
@@ -222,39 +249,135 @@ local function cleanup()
    os.execute("rm -rf '" .. tmp_dir .. "'")
 end
 
-local function stop_selected()
+local function show_errors()
    local stream = streams[selected]
-   local rows = terminal.size()
-   terminal.cursor.position.set(rows, 1)
-   terminal.clear.line()
-   terminal.text.stack.push({ fg = "yellow" })
+   local f = io.open(stream.err_file, "r")
+   if not f then return end
+   local data = f:read("*a")
+   f:close()
+   if not data or data == "" then return end
+
+   local err_text = strip_ansi(data)
+   err_text = err_text:gsub("[%s]+$", "")
+
+   local term_rows, cols = terminal.size()
+   terminal.clear.screen()
+
+   terminal.cursor.position.set(1, 1)
+   terminal.text.stack.push({ fg = "red", brightness = "bold" })
    terminal.output.write(
-   "Stop " .. stream.app.description ..
-   " (" .. stream.app.id .. ")? (y/N) ")
+   "Errors: " .. stream.app.description .. " (" .. stream.app.id .. ")")
 
    terminal.text.stack.pop(1)
-   terminal.cursor.visible.set(true)
+
+   local line_num = 3
+   for line in err_text:gmatch("[^\n]+") do
+      if line_num >= term_rows then break end
+      terminal.cursor.position.set(line_num, 1)
+      if #line > cols then
+         line = line:sub(1, cols)
+      end
+      terminal.output.write(line)
+      line_num = line_num + 1
+   end
+
+   terminal.cursor.position.set(term_rows, 1)
+   terminal.text.stack.push({ fg = "yellow" })
+   terminal.output.write("Press Escape to go back")
+   terminal.text.stack.pop(1)
 
    while true do
       local rawkey = terminal.input.readansi(0.1)
       if rawkey then
-         terminal.cursor.visible.set(false)
-         terminal.cursor.position.set(rows, 1)
-         terminal.clear.line()
-         if rawkey == "y" or rawkey == "Y" then
-            os.execute(
-            modal_cmd .. " app stop '" .. stream.app.id .. "' 2>/dev/null")
-
-            os.execute("kill " .. stream.pid .. " 2>/dev/null")
-            table.remove(streams, selected)
-            if selected > #streams then
-               selected = #streams
-            end
-            update_rows()
-            terminal.clear.screen()
-            draw_headers()
+         local keyname = key_map[rawkey]
+         if keyname == keys.escape then
+            break
          end
-         return
+      end
+   end
+
+   terminal.clear.screen()
+   draw_headers()
+   for _, s in ipairs(streams) do
+      s.last_line = ""
+   end
+end
+
+local function action_menu()
+   local stream = streams[selected]
+   local term_rows = terminal.size()
+
+   local menu_items = {}
+   if stream.has_errors then
+      table.insert(menu_items, "Show errors")
+   end
+   table.insert(menu_items,
+   "Stop " .. stream.app.description .. " (" .. stream.app.id .. ")")
+
+   table.insert(menu_items, "Cancel")
+
+   local menu_sel = #menu_items
+
+   local function draw_menu()
+      for j, item in ipairs(menu_items) do
+         terminal.cursor.position.set(term_rows - #menu_items + j, 1)
+         terminal.clear.line()
+         if j == menu_sel then
+            terminal.text.stack.push({ fg = "yellow", brightness = "bold" })
+            terminal.output.write("> " .. item)
+            terminal.text.stack.pop(1)
+         else
+            terminal.output.write("  " .. item)
+         end
+      end
+   end
+
+   draw_menu()
+
+   while true do
+      local rawkey = terminal.input.readansi(0.1)
+      if rawkey then
+         local keyname = key_map[rawkey]
+         if keyname == keys.escape then
+            for j = 1, #menu_items do
+               terminal.cursor.position.set(term_rows - #menu_items + j, 1)
+               terminal.clear.line()
+            end
+            return
+         elseif keyname == keys.up then
+            if menu_sel > 1 then
+               menu_sel = menu_sel - 1
+               draw_menu()
+            end
+         elseif keyname == keys.down then
+            if menu_sel < #menu_items then
+               menu_sel = menu_sel + 1
+               draw_menu()
+            end
+         elseif keyname == keys.enter then
+            local choice = menu_items[menu_sel]
+            for j = 1, #menu_items do
+               terminal.cursor.position.set(term_rows - #menu_items + j, 1)
+               terminal.clear.line()
+            end
+            if choice == "Show errors" then
+               show_errors()
+            elseif choice:sub(1, 4) == "Stop" then
+               os.execute(
+               modal_cmd .. " app stop '" .. stream.app.id ..
+               "' 2>/dev/null")
+
+               os.execute("kill " .. stream.pid .. " 2>/dev/null")
+               table.remove(streams, selected)
+               if selected > #streams then
+                  selected = #streams
+               end
+               update_rows()
+               terminal.clear.screen()
+               draw_headers()
+            end
+            return
+         end
       end
    end
 end
@@ -282,7 +405,7 @@ local function main()
             draw_headers()
          end
       elseif keyname == keys.enter then
-         stop_selected()
+         action_menu()
       end
 
 
@@ -338,6 +461,17 @@ local function main()
                      end
                   end
                end
+            end
+         end
+
+
+         local ef = io.open(stream.err_file, "r")
+         if ef then
+            local had_errors = stream.has_errors
+            stream.has_errors = ef:read(1) ~= nil
+            ef:close()
+            if stream.has_errors ~= had_errors then
+               needs_header_redraw = true
             end
          end
       end

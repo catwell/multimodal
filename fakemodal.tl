@@ -68,7 +68,11 @@ local function app_logs(app_id: string)
    while true do
       local t = os.date("*t") as {string: integer}
       local timestamp = string.format("%02d:%02d:%02d", t.hour, t.min, t.sec)
-      io.write("\r" .. timestamp .. " test log from app " .. app_id .. " " .. tostring(counter))
+      if counter % 10 == 0 then
+         io.write("\r\027[91m" .. timestamp .. " ERROR from app " .. app_id .. " " .. tostring(counter) .. "\027[0m")
+      else
+         io.write("\r\027[94m" .. timestamp .. " test log from app " .. app_id .. " " .. tostring(counter) .. "\027[0m")
+      end
       io.flush()
       counter = counter + 1
       local delay = 0.2 + math.random() * 1.8
