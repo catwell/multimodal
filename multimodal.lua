@@ -164,7 +164,7 @@ for i, app in ipairs(apps) do
    local log_file = tmp_dir .. "/" .. app.id .. ".out"
    local err_file = tmp_dir .. "/" .. app.id .. ".err"
    local cmd = "PYTHONUNBUFFERED=1 FORCE_COLOR=1 " .. modal_cmd ..
-   " app logs '" .. app.id ..
+   " app logs -f '" .. app.id ..
    "' 2>&1 | " .. lua_interp .. " '" .. script_file ..
    "' '" .. log_file .. "' '" .. err_file .. "' " .. num_lines ..
    " & echo $!"
