@@ -164,7 +164,7 @@ for i, app in ipairs(apps) do
    local log_file = tmp_dir .. "/" .. app.id .. ".out"
    local err_file = tmp_dir .. "/" .. app.id .. ".err"
    local cmd = "PYTHONUNBUFFERED=1 FORCE_COLOR=1 " .. modal_cmd
-      .. " app logs -f '" .. app.id
+      .. " app logs --env '" .. (env as string) .. "' --follow '" .. app.id
       .. "' 2>&1 | " .. lua_interp .. " '" .. script_file
       .. "' '" .. log_file .. "' '" .. err_file .. "' " .. num_lines
       .. " & echo $!"
@@ -364,7 +364,8 @@ local function action_menu()
                show_errors()
             elseif choice:sub(1, 4) == "Stop" then
                os.execute(
-                  modal_cmd .. " app stop '" .. stream.app.id
+                  modal_cmd .. " app stop --env '" .. (env as string)
+                  .. "' --yes '" .. stream.app.id
                   .. "' 2>/dev/null"
                )
                os.execute("kill " .. stream.pid .. " 2>/dev/null")

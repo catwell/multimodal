@@ -18,9 +18,13 @@ list:flag("--json", "Output as JSON")
 
 local logs = app:command("logs", "Stream app logs")
 logs:argument("app_id", "App ID")
+logs:option("-e --env", "Modal environment")
+logs:flag("--follow", "Follow logs")
 
 local stop = app:command("stop", "Stop an app")
 stop:argument("app_id", "App ID")
+stop:option("-e --env", "Modal environment")
+stop:flag("-y --yes", "Skip confirmation")
 
 local args = parser:parse()
 
