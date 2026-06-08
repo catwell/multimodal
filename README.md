@@ -9,7 +9,6 @@ Watch single-line logs of all the [Modal](https://modal.com/) apps in a single e
 To install `multimodal` with [LuaRocks](https://luarocks.org), use:
 
 ```bash
-luarocks install --server=https://luarocks.org/dev terminal
 luarocks install https://raw.githubusercontent.com/catwell/multimodal/refs/heads/main/rockspec/multimodal-dev-1.rockspec
 ```
 
@@ -35,7 +34,6 @@ To bootstrap the local development environment, run:
 curl https://loadk.com/localua.sh -O
 sh localua.sh .lua
 ./.lua/bin/luarocks install tl
-./.lua/bin/luarocks install --server=https://luarocks.org/dev terminal
 ./.lua/bin/luarocks install --only-deps rockspec/multimodal-dev-1.rockspec
 ```
 

@@ -223,20 +223,20 @@ local function draw_headers()
       terminal.cursor.position.set(stream.row, 1)
       terminal.clear.line()
       if i == selected then
-         terminal.text.stack.push({fg = "yellow", brightness = "bold"})
+         terminal.text.push({fg = "yellow", brightness = "bold"})
          terminal.output.write("> ")
       else
          terminal.output.write("  ")
       end
-      terminal.text.stack.push({fg = "cyan", brightness = "bold"})
+      terminal.text.push({fg = "cyan", brightness = "bold"})
       terminal.output.write(
          stream.app.description .. " (" .. stream.app.id .. ")"
       )
-      terminal.text.stack.pop(i == selected and 2 or 1)
+      terminal.text.pop(i == selected and 2 or 1)
       if stream.has_errors then
-         terminal.text.stack.push({fg = "red", brightness = "bold"})
+         terminal.text.push({fg = "red", brightness = "bold"})
          terminal.output.write(" [!]")
-         terminal.text.stack.pop(1)
+         terminal.text.pop(1)
       end
    end
 end
@@ -264,11 +264,11 @@ local function show_errors()
    terminal.clear.screen()
 
    terminal.cursor.position.set(1, 1)
-   terminal.text.stack.push({fg = "red", brightness = "bold"})
+   terminal.text.push({fg = "red", brightness = "bold"})
    terminal.output.write(
       "Errors: " .. stream.app.description .. " (" .. stream.app.id .. ")"
    )
-   terminal.text.stack.pop(1)
+   terminal.text.pop(1)
 
    local line_num = 3
    for line in err_text:gmatch("[^\n]+") do
@@ -282,9 +282,9 @@ local function show_errors()
    end
 
    terminal.cursor.position.set(term_rows, 1)
-   terminal.text.stack.push({fg = "yellow"})
+   terminal.text.push({fg = "yellow"})
    terminal.output.write("Press Escape to go back")
-   terminal.text.stack.pop(1)
+   terminal.text.pop(1)
 
    while true do
       local rawkey = terminal.input.readansi(0.1)
@@ -323,9 +323,9 @@ local function action_menu()
          terminal.cursor.position.set(term_rows - #menu_items + j, 1)
          terminal.clear.line()
          if j == menu_sel then
-            terminal.text.stack.push({fg = "yellow", brightness = "bold"})
+            terminal.text.push({fg = "yellow", brightness = "bold"})
             terminal.output.write("> " .. item)
-            terminal.text.stack.pop(1)
+            terminal.text.pop(1)
          else
             terminal.output.write("  " .. item)
          end
@@ -455,7 +455,7 @@ local function main()
                    for j = 1, stream.visual_height do
                       terminal.cursor.position.set(stream.row + j, 1)
                       terminal.clear.line()
-                      terminal.text.stack.apply()
+                      terminal.text.apply()
                       local line = visual_lines[j]
                       if line then
                          terminal.output.write(line)
