@@ -56,11 +56,11 @@ local all_apps = cjson.decode(json_str) as {any}
 local apps: {App} = {}
 for _, entry in ipairs(all_apps) do
    local a = entry as {string: any}
-   local state = a["State"] as string
+   local state = a["state"] as string
    if state ~= "stopped" then
       table.insert(apps, {
-         id = a["App ID"] as string,
-         description = a["Description"] as string,
+         id = a["app_id"] as string,
+         description = a["description"] as string,
       })
    end
 end
